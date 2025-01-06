@@ -1,6 +1,6 @@
+use crate::buffer::Reader;
 use crate::error::DecodeError;
 use anyhow::Result;
-use std::io::Read;
 
 pub const MAX_VARINT_LENGTH: usize = 10;
 
@@ -37,13 +37,11 @@ pub fn encode_varint(x: i64) -> Vec<u8> {
 }
 
 #[inline]
-pub fn read_uvarint(buf: &mut impl Read) -> Result<u64> {
+pub fn read_uvarint(buf: &mut Reader) -> Result<u64> {
     let mut x: u64 = 0;
-    let mut b = [0u8; 1];
     let mut shift = 0;
     loop {
-        buf.read_exact(&mut b)?;
-        let b = b[0] as u64;
+        let b = buf.read_byte()? as u64;
         x |= (b & 0x7F) << shift;
         shift += 7;
         if (b & 0x80) == 0 {
@@ -56,7 +54,7 @@ pub fn read_uvarint(buf: &mut impl Read) -> Result<u64> {
 }
 
 #[inline]
-pub fn read_varint(buf: &mut impl Read) -> Result<i64> {
+pub fn read_varint(buf: &mut Reader) -> Result<i64> {
     let ux = read_uvarint(buf)?;
     let mut x = (ux as i64) >> 1;
     if ux & 1 != 0 {
