@@ -15,6 +15,9 @@ pub enum DecodeError {
     #[error("deprecated wire type: {0}")]
     DeprecatedWireType(WireType),
 
+    #[error("unexpected EOF")]
+    UnexpectedEof,
+
     #[error("EOF")]
     EOF,
 }

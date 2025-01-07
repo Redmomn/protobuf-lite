@@ -40,15 +40,24 @@ pub fn encode_varint(x: i64) -> Vec<u8> {
 pub fn read_uvarint(buf: &mut Reader) -> Result<u64> {
     let mut x: u64 = 0;
     let mut shift = 0;
+    let mut err = DecodeError::EOF;
     loop {
-        let b = buf.read_byte()? as u64;
-        x |= (b & 0x7F) << shift;
-        shift += 7;
-        if (b & 0x80) == 0 {
-            return Ok(x);
-        }
-        if shift >= 64 {
-            return Err(DecodeError::OverFlow64Bit.into());
+        match buf.read_byte() {
+            Ok(v) => {
+                err = DecodeError::UnexpectedEof;
+                let b = v as u64;
+                x |= (b & 0x7F) << shift;
+                shift += 7;
+                if (b & 0x80) == 0 {
+                    return Ok(x);
+                }
+                if shift >= 64 {
+                    return Err(DecodeError::OverFlow64Bit.into());
+                }
+            }
+            Err(_) => {
+                return Err(err.into());
+            }
         }
     }
 }

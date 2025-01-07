@@ -4,7 +4,6 @@ use crate::fixint::{read_fix32, read_fix64};
 use crate::varint::read_uvarint;
 use anyhow::Result;
 use std::fmt::{Display, Formatter};
-use std::io;
 use std::str;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -81,13 +80,8 @@ impl TryFrom<u64> for WireType {
 }
 
 pub fn read_tag(buf: &mut Reader) -> Result<(u64, WireType)> {
-    match read_uvarint(buf) {
-        Ok(tag) => Ok((tag >> 3, WireType::try_from(tag & 0x07)?)),
-        Err(e) => match e.downcast_ref::<io::Error>() {
-            Some(e) if e.kind() == io::ErrorKind::UnexpectedEof => Err(DecodeError::EOF.into()),
-            _ => Err(e),
-        },
-    }
+    let tag = read_uvarint(buf)?;
+    Ok((tag >> 3, WireType::try_from(tag & 0x07)?))
 }
 
 pub fn read_length_delimited(buf: &mut Reader) -> Result<Vec<DataType>> {
@@ -100,15 +94,14 @@ pub fn read_length_delimited(buf: &mut Reader) -> Result<Vec<DataType>> {
     loop {
         match decode_protobuf(&mut data_buf) {
             Ok(v) => result.push(DataType::Message(v)),
-            Err(err) => {
-                if let Some(DecodeError::EOF) = err.downcast_ref::<DecodeError>() {
-                    return Ok(result);
-                } else {
+            Err(err) => match err.downcast_ref::<DecodeError>() {
+                Some(DecodeError::EOF) => return Ok(result),
+                _ => {
                     result.clear();
                     data_buf.reset();
                     break;
                 }
-            }
+            },
         };
     }
 
@@ -169,13 +162,10 @@ pub fn decode_protobuf(buf: &mut Reader) -> Result<Vec<ProtoData>> {
                     data,
                 });
             }
-            Err(err) => {
-                if let Some(DecodeError::EOF) = err.downcast_ref::<DecodeError>() {
-                    break;
-                } else {
-                    return Err(err);
-                }
-            }
+            Err(err) => match err.downcast_ref::<DecodeError>() {
+                Some(DecodeError::EOF) => break,
+                _ => return Err(err),
+            },
         }
     }
     Ok(parsed_data)
