@@ -1,25 +1,29 @@
 use anyhow::Result;
 use std::io::{Error, ErrorKind};
 
-pub struct Reader<'a> {
-    buf: &'a [u8],
+pub struct Reader<T> {
+    buf: T,
     pos: usize,
     remain: usize,
 }
 
-impl Reader<'_> {
-    pub fn new(data: &[u8]) -> Reader {
+impl<T> Reader<T>
+where
+    T: AsRef<[u8]>,
+{
+    pub fn new(data: T) -> Self {
+        let length = data.as_ref().len();
         Reader {
             buf: data,
             pos: 0,
-            remain: data.len(),
+            remain: length,
         }
     }
 
     #[inline]
     pub fn reset(&mut self) {
         self.pos = 0;
-        self.remain = self.buf.len();
+        self.remain = self.buf.as_ref().len();
     }
 
     #[inline]
@@ -47,7 +51,7 @@ impl Reader<'_> {
         if self.remain < 1 {
             return Err(Error::new(ErrorKind::UnexpectedEof, "unexpected EOF").into());
         }
-        let b = self.buf[self.pos];
+        let b = self.buf.as_ref()[self.pos];
         self.pos += 1;
         self.remain -= 1;
         Ok(b)
@@ -58,7 +62,7 @@ impl Reader<'_> {
         if self.remain < n {
             return Err(Error::new(ErrorKind::UnexpectedEof, "unexpected EOF").into());
         }
-        let b = &self.buf[self.pos..self.pos + n];
+        let b = &self.buf.as_ref()[self.pos..self.pos + n];
         self.pos += n;
         self.remain -= n;
         Ok(b)

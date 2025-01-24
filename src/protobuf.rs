@@ -178,12 +178,18 @@ impl TryFrom<u64> for WireType {
     }
 }
 
-pub fn read_tag(buf: &mut Reader) -> Result<(u64, WireType)> {
+pub fn read_tag<T>(buf: &mut Reader<T>) -> Result<(u64, WireType)>
+where
+    T: AsRef<[u8]>,
+{
     let tag = read_uvarint(buf)?;
     Ok((tag >> 3, WireType::try_from(tag & 0x07)?))
 }
 
-pub fn read_length_delimited(buf: &mut Reader) -> Result<Vec<ProtoData>> {
+pub fn read_length_delimited<T>(buf: &mut Reader<T>) -> Result<Vec<ProtoData>>
+where
+    T: AsRef<[u8]>,
+{
     let mut result: Vec<ProtoData> = Vec::new();
     let len = read_uvarint(buf)?;
 
@@ -236,7 +242,10 @@ pub fn read_length_delimited(buf: &mut Reader) -> Result<Vec<ProtoData>> {
     Ok(result)
 }
 
-pub fn decode_protobuf(buf: &mut Reader) -> Result<ProtoData> {
+pub fn decode_protobuf<T>(buf: &mut Reader<T>) -> Result<ProtoData>
+where
+    T: AsRef<[u8]>,
+{
     let mut parsed_data = Map::default();
     loop {
         match read_tag(buf) {

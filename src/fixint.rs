@@ -26,14 +26,20 @@ pub fn encode_fix64(x: i64) -> Vec<u8> {
 }
 
 #[inline]
-pub fn read_fix32(buf: &mut Reader) -> Result<i32> {
+pub fn read_fix32<T>(buf: &mut Reader<T>) -> Result<i32>
+where
+    T: AsRef<[u8]>,
+{
     let mut b = [0u8; size_of::<i32>()];
     buf.read_bytes_into(&mut b)?;
     Ok(i32::from_le_bytes(b))
 }
 
 #[inline]
-pub fn read_fix64(buf: &mut Reader) -> Result<i64> {
+pub fn read_fix64<T>(buf: &mut Reader<T>) -> Result<i64>
+where
+    T: AsRef<[u8]>,
+{
     let mut b = [0u8; size_of::<i64>()];
     buf.read_bytes_into(&mut b)?;
     Ok(i64::from_le_bytes(b))

@@ -37,7 +37,10 @@ pub fn encode_varint(x: i64) -> Vec<u8> {
 }
 
 #[inline]
-pub fn read_uvarint(buf: &mut Reader) -> Result<u64> {
+pub fn read_uvarint<T>(buf: &mut Reader<T>) -> Result<u64>
+where
+    T: AsRef<[u8]>,
+{
     let mut x: u64 = 0;
     let mut shift = 0;
     let mut err = DecodeError::EOF;
@@ -63,7 +66,10 @@ pub fn read_uvarint(buf: &mut Reader) -> Result<u64> {
 }
 
 #[inline]
-pub fn read_varint(buf: &mut Reader) -> Result<i64> {
+pub fn read_varint<T>(buf: &mut Reader<T>) -> Result<i64>
+where
+    T: AsRef<[u8]>,
+{
     let ux = read_uvarint(buf)?;
     let mut x = (ux as i64) >> 1;
     if ux & 1 != 0 {
