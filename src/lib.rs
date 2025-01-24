@@ -19,6 +19,8 @@ mod tests {
         )
         .unwrap();
 
+        println!("{}", pb);
+
         let mut expect_pb = Map::new();
         expect_pb.insert(1, ProtoData::Varint(114514));
         expect_pb.insert(3, ProtoData::Fix32(1919810));
@@ -114,7 +116,7 @@ mod tests {
         assert_eq!(pb, Message(expect_pb));
     }
 
-    fn read_protobuf(hex_str: &str) -> anyhow::Result<protobuf::ProtoData> {
+    fn read_protobuf(hex_str: &str) -> anyhow::Result<ProtoData> {
         let bytes = hex::decode(hex_str.replace(" ", ""))?;
         decode_protobuf(&mut Reader::new(&bytes.as_slice()))
     }

@@ -57,6 +57,48 @@ pub enum ProtoData {
     Message(Map<u64, ProtoData>),
 }
 
+impl Display for ProtoData {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProtoData::Varint(v) => {
+                write!(f, "{}", v)
+            }
+            ProtoData::Fix64(v) => {
+                write!(f, "{}", v)
+            }
+            ProtoData::Fix32(v) => {
+                write!(f, "{}", v)
+            }
+            ProtoData::Bytes(v) => {
+                write!(f, "\"{}\"", hex::encode(v))
+            }
+            ProtoData::String(v) => {
+                write!(f, "\"{}\"", v)
+            }
+            ProtoData::Repeated(v) => {
+                write!(f, "[")?;
+                for (i, item) in v.iter().enumerate() {
+                    if i != 0 && i != v.len() {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", item)?;
+                }
+                write!(f, "]")
+            }
+            ProtoData::Message(v) => {
+                write!(f, "{{")?;
+                for (i, kv) in v.iter().enumerate() {
+                    write!(f, "\"{}\": {}", kv.0, kv.1)?;
+                    if i != v.len() - 1 {
+                        write!(f, ", ")?;
+                    }
+                }
+                write!(f, "}}")
+            }
+        }
+    }
+}
+
 type MapImpl<K, V> = BTreeMap<K, V>;
 
 #[derive(Debug)]
