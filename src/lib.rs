@@ -1,6 +1,7 @@
 pub mod buffer;
 pub mod error;
 pub mod fixint;
+mod json;
 pub mod protobuf;
 pub mod varint;
 

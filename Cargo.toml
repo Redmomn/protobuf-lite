@@ -2,6 +2,9 @@
 name = "protobuf-lite"
 version = "0.1.0"
 edition = "2021"
+license = "Apache-2.0"
+description = "decode protobuf as hashmap"
+repository = "https://github.com/Redmomn/protobuf-lite"
 
 [dependencies]
 anyhow = "1.0.95"

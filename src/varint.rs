@@ -43,11 +43,12 @@ where
 {
     let mut x: u64 = 0;
     let mut shift = 0;
-    let mut err = DecodeError::EOF;
+    if buf.is_end() {
+        return Err(DecodeError::EOF.into());
+    }
     loop {
         match buf.read_byte() {
             Ok(v) => {
-                err = DecodeError::UnexpectedEof;
                 let b = v as u64;
                 x |= (b & 0x7F) << shift;
                 shift += 7;
@@ -59,7 +60,7 @@ where
                 }
             }
             Err(_) => {
-                return Err(err.into());
+                return Err(DecodeError::UnexpectedEof.into());
             }
         }
     }

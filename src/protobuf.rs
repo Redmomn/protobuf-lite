@@ -1,6 +1,7 @@
 use crate::buffer::Reader;
 use crate::error::DecodeError;
 use crate::fixint::{read_fix32, read_fix64};
+use crate::json;
 use crate::varint::read_uvarint;
 use anyhow::Result;
 use std::collections::BTreeMap;
@@ -73,7 +74,7 @@ impl Display for ProtoData {
                 write!(f, "\"{}\"", hex::encode(v))
             }
             ProtoData::String(v) => {
-                write!(f, "\"{}\"", v)
+                write!(f, "\"{}\"", json::escape_string(v))
             }
             ProtoData::Repeated(v) => {
                 write!(f, "[")?;
@@ -87,11 +88,11 @@ impl Display for ProtoData {
             }
             ProtoData::Message(v) => {
                 write!(f, "{{")?;
-                for (i, kv) in v.iter().enumerate() {
-                    write!(f, "\"{}\": {}", kv.0, kv.1)?;
-                    if i != v.len() - 1 {
+                for (i, (key, value)) in v.iter().enumerate() {
+                    if i > 0 {
                         write!(f, ", ")?;
                     }
+                    write!(f, "\"{}\": {}", key, value)?;
                 }
                 write!(f, "}}")
             }
@@ -282,6 +283,12 @@ where
     result.push(ProtoData::Bytes(Vec::from(data_buf.read_all_bytes()?)));
 
     Ok(result)
+}
+
+pub fn decode_protobuf_hex(data: &str) -> Result<ProtoData> {
+    decode_protobuf(&mut Reader::new(
+        hex::decode(data.replace(" ", ""))?.as_slice(),
+    ))
 }
 
 pub fn decode_protobuf<T>(buf: &mut Reader<T>) -> Result<ProtoData>
