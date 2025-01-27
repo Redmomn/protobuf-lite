@@ -20,4 +20,7 @@ pub enum DecodeError {
 
     #[error("EOF")]
     EOF,
+
+    #[error("unknown error")]
+    Error,
 }

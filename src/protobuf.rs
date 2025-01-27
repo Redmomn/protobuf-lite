@@ -245,7 +245,6 @@ where
                 ProtoData::Message(msg) => {
                     if msg.len() > 0 {
                         result.push(ProtoData::Message(msg));
-                    } else {
                         return Ok(result);
                     }
                 }
@@ -314,10 +313,12 @@ where
                     WireType::I32 => ProtoData::Fix32(read_fix32(buf)?),
                     WireType::LEN => {
                         let mut list = read_length_delimited(buf)?;
-                        if list.len() > 1 {
-                            ProtoData::Repeated(list)
-                        } else {
-                            list.remove(0)
+                        match list.len() {
+                            0 => {
+                                return Err(DecodeError::Error.into());
+                            }
+                            1 => list.remove(0),
+                            _ => ProtoData::Repeated(list),
                         }
                     }
                     x => return Err(DecodeError::DeprecatedWireType(x).into()),
