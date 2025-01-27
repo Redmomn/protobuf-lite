@@ -241,7 +241,16 @@ where
     // 优先protobuf
     loop {
         match decode_protobuf(&mut data_buf) {
-            Ok(v) => result.push(v),
+            Ok(v) => match v {
+                ProtoData::Message(msg) => {
+                    if msg.len() > 0 {
+                        result.push(ProtoData::Message(msg));
+                    } else {
+                        return Ok(result);
+                    }
+                }
+                _ => {}
+            },
             Err(err) => match err.downcast_ref::<DecodeError>() {
                 Some(DecodeError::EOF) => return Ok(result),
                 _ => {
