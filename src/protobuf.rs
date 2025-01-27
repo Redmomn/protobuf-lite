@@ -235,6 +235,10 @@ where
 {
     let mut result: Vec<ProtoData> = Vec::new();
     let len = read_uvarint(buf)?;
+    if len == 0 {
+        result.push(ProtoData::Message(Map::new()));
+        return Ok(result);
+    }
 
     let mut data_buf = Reader::new(buf.read_bytes(len as usize)?);
 
