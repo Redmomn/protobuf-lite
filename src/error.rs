@@ -24,3 +24,10 @@ pub enum DecodeError {
     #[error("unknown error")]
     Error,
 }
+
+pub fn convert_error<T, E>(result: Result<T, anyhow::Error>, err: E) -> Result<T, E> {
+    match result {
+        Ok(t) => Ok(t),
+        Err(_) => Err(err),
+    }
+}

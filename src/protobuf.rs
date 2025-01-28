@@ -1,5 +1,5 @@
 use crate::buffer::Reader;
-use crate::error::DecodeError;
+use crate::error::{convert_error, DecodeError};
 use crate::fixint::{read_fix32, read_fix64};
 use crate::json;
 use crate::varint::read_uvarint;
@@ -312,11 +312,18 @@ where
         match read_tag(buf) {
             Ok((field, wire_type)) => {
                 let data = match wire_type {
-                    WireType::VARINT => ProtoData::Varint(read_uvarint(buf)?),
-                    WireType::I64 => ProtoData::Fix64(read_fix64(buf)?),
-                    WireType::I32 => ProtoData::Fix32(read_fix32(buf)?),
+                    WireType::VARINT => {
+                        ProtoData::Varint(convert_error(read_uvarint(buf), DecodeError::Error)?)
+                    }
+                    WireType::I64 => {
+                        ProtoData::Fix64(convert_error(read_fix64(buf), DecodeError::Error)?)
+                    }
+                    WireType::I32 => {
+                        ProtoData::Fix32(convert_error(read_fix32(buf), DecodeError::Error)?)
+                    }
                     WireType::LEN => {
-                        let mut list = read_length_delimited(buf)?;
+                        let mut list =
+                            convert_error(read_length_delimited(buf), DecodeError::Error)?;
                         match list.len() {
                             0 => {
                                 return Err(DecodeError::Error.into());
