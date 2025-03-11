@@ -1,14 +1,20 @@
 use crate::buffer::Reader;
-use crate::error::{convert_error, DecodeError};
-use crate::fixint::{read_fix32, read_fix64};
+use crate::error::DecodeError;
+use crate::error::EncodeError::DataError;
+use crate::fixint::{read_fix32, read_fix64, write_fix32, write_fix64};
 use crate::json;
-use crate::varint::read_uvarint;
+use crate::varint::{read_uvarint, write_uvarint};
 use anyhow::Result;
+use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
+use std::io::Write;
+use std::mem::discriminant;
+use std::ops::{Deref, DerefMut};
 use std::str;
 
+#[repr(u8)]
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum WireType {
     VARINT = 0, // int32, int64, uint32, uint64, sint32, sint64, bool, enum
@@ -58,6 +64,159 @@ pub enum ProtoData {
     Message(Map<u64, ProtoData>),
 }
 
+impl ProtoData {
+    pub fn wire_type(&self) -> WireType {
+        match self {
+            ProtoData::Varint(_) => WireType::VARINT,
+            ProtoData::Fix64(_) => WireType::I64,
+            ProtoData::Fix32(_) => WireType::I32,
+            _ => WireType::LEN,
+        }
+    }
+
+    pub fn encode_to<T>(&self, field: u64, buf: &mut T) -> Result<()>
+    where
+        T: Write,
+    {
+        match self {
+            ProtoData::Varint(v) => {
+                write_uvarint((field << 3) | (self.wire_type() as u64), buf)?;
+                write_uvarint(*v, buf)?;
+            }
+            ProtoData::Fix64(v) => {
+                write_uvarint((field << 3) | (self.wire_type() as u64), buf)?;
+                write_fix64(*v, buf)?;
+            }
+            ProtoData::Fix32(v) => {
+                write_uvarint((field << 3) | (self.wire_type() as u64), buf)?;
+                write_fix32(*v, buf)?
+            }
+            ProtoData::Bytes(v) => {
+                write_uvarint((field << 3) | (self.wire_type() as u64), buf)?;
+                write_uvarint(v.len() as u64, buf)?;
+                buf.write_all(v.as_slice())?;
+            }
+            ProtoData::String(v) => {
+                write_uvarint((field << 3) | (self.wire_type() as u64), buf)?;
+                write_uvarint(v.len() as u64, buf)?;
+                buf.write_all(v.as_bytes())?;
+            }
+            ProtoData::Repeated(v) => {
+                let mut typ = None;
+                if v.is_empty() {
+                    return Ok(());
+                }
+                match v[0].wire_type() {
+                    WireType::LEN => {}
+                    _ => {
+                        write_uvarint((field << 3) | (self.wire_type() as u64), buf)?;
+                    }
+                }
+                for i in v {
+                    let disc = discriminant(i);
+                    if let Some(existing) = typ {
+                        if existing != disc {
+                            return Err(DataError.into());
+                        }
+                    } else {
+                        typ = Some(disc);
+                    }
+
+                    if matches!(*i, ProtoData::Repeated(_)) {
+                        return Err(DataError.into());
+                    }
+                    i.encode_repeated_to(field, buf)?
+                }
+            }
+            ProtoData::Message(v) => v.encode_to(buf)?,
+        }
+        Ok(())
+    }
+
+    pub fn encode_repeated_to<T>(&self, field: u64, buf: &mut T) -> Result<()>
+    where
+        T: Write,
+    {
+        match self {
+            ProtoData::Varint(v) => {
+                write_uvarint(*v, buf)?;
+            }
+            ProtoData::Fix64(v) => {
+                write_fix64(*v, buf)?;
+            }
+            ProtoData::Fix32(v) => write_fix32(*v, buf)?,
+            ProtoData::Bytes(v) => {
+                write_uvarint((field << 3) | (self.wire_type() as u64), buf)?;
+                write_uvarint(v.len() as u64, buf)?;
+                buf.write_all(v.as_slice())?;
+            }
+            ProtoData::String(v) => {
+                write_uvarint((field << 3) | (self.wire_type() as u64), buf)?;
+                write_uvarint(v.len() as u64, buf)?;
+                buf.write_all(v.as_bytes())?;
+            }
+            ProtoData::Repeated(_) => {}
+            ProtoData::Message(v) => v.encode_to(buf)?,
+        }
+        Ok(())
+    }
+}
+
+macro_rules! impl_from {
+    ($($t:ty => $variant:ident),*) => {
+        $(
+            impl From<$t> for ProtoData {
+                fn from(v: $t) -> Self {
+                    Self::$variant(v)
+                }
+            }
+        )*
+    };
+}
+
+macro_rules! impl_from_varint {
+    ($($t:ty),*) => {
+        $(
+            impl From<$t> for ProtoData {
+                fn from(v: $t) -> Self {
+                    Self::Varint(v as u64)
+                }
+            }
+        )*
+    };
+}
+
+impl_from_varint!(u8, u16, u32, u64, i8, i16, i32, i64);
+
+impl From<bool> for ProtoData {
+    fn from(v: bool) -> Self {
+        match v {
+            true => Self::Varint(1),
+            false => Self::Varint(0),
+        }
+    }
+}
+
+impl From<f32> for ProtoData {
+    fn from(v: f32) -> Self {
+        Self::Fix32(i32::from_le_bytes(v.to_le_bytes()))
+    }
+}
+
+impl From<f64> for ProtoData {
+    fn from(v: f64) -> Self {
+        Self::Fix64(i64::from_le_bytes(v.to_le_bytes()))
+    }
+}
+
+impl From<&str> for ProtoData {
+    fn from(v: &str) -> Self {
+        Self::String(v.to_string())
+    }
+}
+
+impl_from!(Vec<u8> => Bytes, String => String, Vec<ProtoData> => Repeated, Map<u64, ProtoData> => Message);
+
 impl Display for ProtoData {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -100,11 +259,9 @@ impl Display for ProtoData {
     }
 }
 
-type MapImpl<K, V> = BTreeMap<K, V>;
-
 #[derive(Debug)]
 pub struct Map<K, V> {
-    map: MapImpl<K, V>,
+    map: BTreeMap<K, V>,
 }
 
 impl Default for Map<u64, ProtoData> {
@@ -112,6 +269,20 @@ impl Default for Map<u64, ProtoData> {
         Map {
             map: BTreeMap::new(),
         }
+    }
+}
+
+impl Deref for Map<u64, ProtoData> {
+    type Target = BTreeMap<u64, ProtoData>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.map
+    }
+}
+
+impl DerefMut for Map<u64, ProtoData> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.map
     }
 }
 
@@ -147,60 +318,24 @@ impl Hash for Map<u64, ProtoData> {
 impl Map<u64, ProtoData> {
     pub fn new() -> Self {
         Map {
-            map: MapImpl::new(),
+            map: BTreeMap::new(),
         }
     }
 
-    pub fn clear(&mut self) {
-        self.map.clear();
+    pub fn encode_to<T>(&self, buf: &mut T) -> Result<()>
+    where
+        T: Write,
+    {
+        for (&key, value) in self.iter() {
+            value.encode_to(key, buf)?
+        }
+        Ok(())
     }
 
-    pub fn len(&self) -> usize {
-        self.map.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.map.is_empty()
-    }
-
-    pub fn contains_key(&self, key: u64) -> bool {
-        self.map.contains_key(&key)
-    }
-
-    pub fn get(&self, key: u64) -> Option<&ProtoData> {
-        self.map.get(&key)
-    }
-
-    pub fn get_mut(&mut self, key: u64) -> Option<&mut ProtoData> {
-        self.map.get_mut(&key)
-    }
-
-    pub fn insert(&mut self, key: u64, message: ProtoData) -> Option<ProtoData> {
-        self.map.insert(key, message)
-    }
-
-    pub fn remove(&mut self, key: u64) -> Option<ProtoData> {
-        self.map.remove(&key)
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = (&u64, &ProtoData)> {
-        self.map.iter()
-    }
-
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&u64, &mut ProtoData)> {
-        self.map.iter_mut()
-    }
-
-    pub fn keys(&self) -> impl Iterator<Item = &u64> {
-        self.map.keys()
-    }
-
-    pub fn values(&self) -> impl Iterator<Item = &ProtoData> {
-        self.map.values()
-    }
-
-    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut ProtoData> {
-        self.map.values_mut()
+    pub fn encode(&self) -> Result<Vec<u8>> {
+        let mut buf = Vec::new();
+        self.encode_to(&mut buf)?;
+        Ok(buf)
     }
 }
 
@@ -244,7 +379,7 @@ where
 
     // 优先protobuf
     loop {
-        match decode_protobuf(&mut data_buf) {
+        match decode_protobuf_from(&mut data_buf) {
             Ok(v) => match v {
                 ProtoData::Message(msg) => {
                     if msg.len() > 0 {
@@ -298,12 +433,19 @@ where
 }
 
 pub fn decode_protobuf_hex(data: &str) -> Result<ProtoData> {
-    decode_protobuf(&mut Reader::new(
+    decode_protobuf_from(&mut Reader::new(
         hex::decode(data.replace(" ", ""))?.as_slice(),
     ))
 }
 
-pub fn decode_protobuf<T>(buf: &mut Reader<T>) -> Result<ProtoData>
+pub fn decode_protobuf<T>(data: T) -> Result<ProtoData>
+where
+    T: AsRef<[u8]>,
+{
+    decode_protobuf_from(&mut Reader::new(data.as_ref()))
+}
+
+pub fn decode_protobuf_from<T>(buf: &mut Reader<T>) -> Result<ProtoData>
 where
     T: AsRef<[u8]>,
 {
@@ -313,17 +455,17 @@ where
             Ok((field, wire_type)) => {
                 let data = match wire_type {
                     WireType::VARINT => {
-                        ProtoData::Varint(convert_error(read_uvarint(buf), DecodeError::Error)?)
+                        ProtoData::Varint(read_uvarint(buf).map_err(|_| DecodeError::Error)?)
                     }
                     WireType::I64 => {
-                        ProtoData::Fix64(convert_error(read_fix64(buf), DecodeError::Error)?)
+                        ProtoData::Fix64(read_fix64(buf).map_err(|_| DecodeError::Error)?)
                     }
                     WireType::I32 => {
-                        ProtoData::Fix32(convert_error(read_fix32(buf), DecodeError::Error)?)
+                        ProtoData::Fix32(read_fix32(buf).map_err(|_| DecodeError::Error)?)
                     }
                     WireType::LEN => {
                         let mut list =
-                            convert_error(read_length_delimited(buf), DecodeError::Error)?;
+                            read_length_delimited(buf).map_err(|_| DecodeError::Error)?;
                         match list.len() {
                             0 => {
                                 return Err(DecodeError::Error.into());
@@ -334,20 +476,17 @@ where
                     }
                     x => return Err(DecodeError::DeprecatedWireType(x).into()),
                 };
-                if parsed_data.contains_key(field) {
-                    match parsed_data.get(field) {
-                        None => {}
-                        Some(ProtoData::Repeated(_)) => {
-                            if let Some(ProtoData::Repeated(list)) = parsed_data.get_mut(field) {
-                                list.push(data);
-                            }
+
+                match parsed_data.entry(field) {
+                    Entry::Occupied(mut entry) => match entry.get_mut() {
+                        ProtoData::Repeated(list) => list.push(data),
+                        existing => {
+                            *existing = ProtoData::Repeated(vec![existing.clone(), data]);
                         }
-                        Some(v) => {
-                            parsed_data.insert(field, ProtoData::Repeated(vec![v.clone(), data]));
-                        }
-                    };
-                } else {
-                    parsed_data.insert(field, data);
+                    },
+                    Entry::Vacant(entry) => {
+                        entry.insert(data);
+                    }
                 }
             }
             Err(err) => match err.downcast_ref::<DecodeError>() {

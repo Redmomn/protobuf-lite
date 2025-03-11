@@ -1,38 +1,47 @@
 use crate::buffer::Reader;
 use crate::error::DecodeError;
 use anyhow::Result;
+use std::io::Write;
 
 pub const MAX_VARINT_LENGTH: usize = 10;
 
 #[inline]
-pub fn write_uvarint(mut x: u64, buf: &mut Vec<u8>) {
+pub fn write_uvarint<T>(mut x: u64, buf: &mut T) -> Result<()>
+where
+    T: Write,
+{
     while x >= 0x80 {
-        buf.push(x as u8 | 0x80);
+        buf.write_all(&[x as u8 | 0x80])?;
         x >>= 7;
     }
-    buf.push(x as u8);
+    buf.write_all(&[x as u8])?;
+    Ok(())
 }
 
 #[inline]
-pub fn write_varint(x: i64, buf: &mut Vec<u8>) {
+pub fn write_varint<T>(x: i64, buf: &mut T) -> Result<()>
+where
+    T: Write,
+{
     let mut ux = (x as u64) << 1;
     if x < 0 {
         ux = !ux;
     }
-    write_uvarint(ux, buf);
+    write_uvarint(ux, buf)?;
+    Ok(())
 }
 
 #[inline]
 pub fn encode_uvarint(x: u64) -> Vec<u8> {
     let mut buf = Vec::with_capacity(MAX_VARINT_LENGTH);
-    write_uvarint(x, &mut buf);
+    let _ = write_uvarint(x, &mut buf);
     buf
 }
 
 #[inline]
 pub fn encode_varint(x: i64) -> Vec<u8> {
     let mut buf = Vec::with_capacity(MAX_VARINT_LENGTH);
-    write_varint(x, &mut buf);
+    let _ = write_varint(x, &mut buf);
     buf
 }
 

@@ -25,9 +25,8 @@ pub enum DecodeError {
     Error,
 }
 
-pub fn convert_error<T, E>(result: Result<T, anyhow::Error>, err: E) -> Result<T, E> {
-    match result {
-        Ok(t) => Ok(t),
-        Err(_) => Err(err),
-    }
+#[derive(Debug, Error)]
+pub enum EncodeError {
+    #[error("data error")]
+    DataError,
 }

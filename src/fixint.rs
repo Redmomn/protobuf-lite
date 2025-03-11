@@ -1,14 +1,23 @@
 use crate::buffer::Reader;
 use anyhow::Result;
+use std::io::Write;
 
 #[inline]
-pub fn write_fix32(x: i32, buf: &mut Vec<u8>) {
-    buf.extend_from_slice(x.to_le_bytes().as_slice());
+pub fn write_fix32<T>(x: i32, buf: &mut T) -> Result<()>
+where
+    T: Write,
+{
+    buf.write_all(x.to_le_bytes().as_slice())?;
+    Ok(())
 }
 
 #[inline]
-pub fn write_fix64(x: i64, buf: &mut Vec<u8>) {
-    buf.extend_from_slice(x.to_le_bytes().as_slice());
+pub fn write_fix64<T>(x: i64, buf: &mut T) -> Result<()>
+where
+    T: Write,
+{
+    buf.write_all(x.to_le_bytes().as_slice())?;
+    Ok(())
 }
 
 #[inline]
